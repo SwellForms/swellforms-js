@@ -1,0 +1,58 @@
+{
+  "name": "@swellforms/js",
+  "version": "0.1.0",
+  "description": "Core JavaScript SDK for SwellForms",
+  "license": "MIT",
+  "type": "module",
+  "author": "SwellForms <support@swellforms.com> (https://swellforms.com)",
+  "contributors": [
+    "Keith Mifsud <mifsud.k@gmail.com> (https://keith-mifsud.me)",
+    "Sangit Pariyar <sangeetsp83@gmail.com> (https://sangit-pariyar.me)",
+    "SwellAI Ltd <hello@swellai.ltd> (https://swellai.ltd)"
+  ],
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --dts --format esm,cjs --minify --clean",
+    "prepublishOnly": "npm run build",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/swellforms/swellforms-js.git"
+  },
+  "bugs": {
+    "url": "https://github.com/swellforms/swellforms-js/issues"
+  },
+  "homepage": "https://github.com/swellforms/swellforms-js#readme",
+  "keywords": [
+    "swellforms",
+    "sdk",
+    "javascript",
+    "typescript",
+    "forms",
+    "webhooks"
+  ],
+  "devDependencies": {
+    "tsup": "^8.5.0",
+    "typescript": "^5.9.2"
+  }
+}
