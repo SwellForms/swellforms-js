@@ -1,0 +1,69 @@
+name: Release and Publish to NPM
+
+# This workflow runs on every push to the 'main' branch.
+on:
+  push:
+    branches:
+      - main
+
+# Defines the jobs that will run as part of the workflow.
+jobs:
+  release:
+    # Job name
+    name: Build, Version, and Publish
+
+    # The type of runner that the job will run on
+    runs-on: ubuntu-latest
+
+    # The sequence of steps that make up the job
+    steps:
+      # 1. Checkout the code from your repository
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          # We need to fetch all history and tags for the versioning action to work correctly
+          fetch-depth: 0
+          # This token is required to push the new version tag back to the repository
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # 2. Set up Node.js environment
+      # This action sets up a Node.js environment for you to use in your workflow.
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20' # Specify the Node.js version you use
+          registry-url: 'https://registry.npmjs.org' # Set the registry for publishing
+
+      # 3. Install dependencies
+      # It's recommended to use 'ci' for faster, more reliable installs in CI environments.
+      - name: Install dependencies
+        run: npm ci
+
+      # 4. Build the project
+      # This runs the 'build' script defined in your package.json (e.g., tsc).
+      - name: Build project
+        run: npm run build
+
+      # 5. Auto-magical versioning and tagging
+      # This is the core step for automatic versioning. It reads commit messages.
+      - name: Bump version and create tag
+        id: tag_version
+        uses: mathieudutour/github-tag-action@v6.2
+        with:
+          # This token is used to interact with the GitHub API for creating tags.
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          # Use conventional commit messages to determine the version bump.
+          default_bump: "patch" # If no special commit message is found, default to a patch.
+
+      # 6. Publish to NPM
+      # This step takes the built package and publishes it to the NPM registry.
+      - name: Publish to NPM
+        run: npm publish
+        env:
+          # The NODE_AUTH_TOKEN is a secret that allows the action to authenticate with NPM.
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      # 7. Push the new tag back to the repository
+      # This makes sure your repo has the new version tag (e.g., v1.2.3).
+      - name: Push new version tag to repo
+        run: git push --tags

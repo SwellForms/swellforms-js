@@ -14,13 +14,6 @@ Core JavaScript SDK for interacting with [SwellForms](https://swellforms.com) fr
 
 - TBC: Links to other packages such as Nuxt.js, React, etc. embeddable script docs ...
 
-Requirements
-
-Node 18+ (or any modern browser)
-
-If your environment does not provide globalThis.fetch, pass a fetch implementation (for example node-fetch) into the methods that accept it.
-
-TypeScript 5.x is recommended if you consume the types.
 
 ## Install
 
