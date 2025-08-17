@@ -136,171 +136,246 @@ async function fetchJSON(
     }
 }
 
-export class SwellForm {
-    private formId: string
-    private fields: Record<string, any>
-    private errors: Record<string, string[]> = {}
-    private processing = false
+// This code assumes your types (FormField, SubmitResult, etc.) and helper
+// functions (fetchJSON, toPlain, normalizeErrors) are defined elsewhere in the same file.
 
-    constructor(formId: string, initialFields: Record<string, any> = {}) {
-        this.formId = formId
-        this.fields = {...initialFields}
+export class SwellForm {
+    public readonly formId: string;
+
+    // Internal state
+    private definitions: FormField[] = [];
+    private values: Record<string, any> = {};
+    private errors: Record<string, string[]> = {};
+    private processing = false;
+    private hasFetchedDefs = false;
+
+    /**
+     * Creates a new SwellForm instance.
+     * This is a lightweight operation and does NOT make any network requests.
+     * @param formId The ID of your form.
+     * @param initialValues Optional initial values for your form fields.
+     */
+    constructor(formId: string, initialValues: Record<string, any> = {}) {
+        this.formId = formId;
+        this.values = { ...initialValues };
     }
 
-    // ---------- mutation ----------
+    // ---------- OPT-IN DYNAMIC UI METHODS ----------
+
+    /**
+     * Fetches the form's field definitions from the API.
+     * Call this method when you need to dynamically render the form UI.
+     * @param fetchImpl Optional custom fetch implementation.
+     * @returns A promise that resolves with the array of form fields.
+     */
+    async fetchFields(fetchImpl?: typeof fetch): Promise<FormField[]> {
+        const { res, json } = await fetchJSON(
+            ENDPOINTS.fields(this.formId),
+            { method: 'GET', headers: { 'Accept': 'application/json' } },
+            fetchImpl
+        );
+
+        if (!res.ok) {
+            if (res.status === 404) throw new SwellformsError('Form not found', res.status, 'NOT_FOUND');
+            if (res.status === 401 || res.status === 403) throw new SwellformsError('Unauthorized', res.status, 'UNAUTHORIZED');
+            throw new SwellformsError(`Failed to fetch fields (${res.status})`, res.status, 'UNEXPECTED');
+        }
+
+        const fields = Array.isArray(json) ? json : (json?.fields ?? []);
+        this.definitions = fields;
+        this.hasFetchedDefs = true;
+        return this.definitions;
+    }
+
+    /**
+     * Returns the field definitions if they have been fetched.
+     * @returns An array of FormField objects, or an empty array if fetchFields() has not been called.
+     */
+    getFieldDefinitions(): FormField[] {
+        return this.definitions;
+    }
+
+    // ---------- CORE DATA METHODS ----------
+
     setField(id: string, value: any) {
-        this.fields[id] = value
+        this.values[id] = value;
+        if (this.errors[id]) {
+            delete this.errors[id];
+        }
     }
 
     setFields(map: Record<string, any>) {
-        Object.assign(this.fields, map)
+        Object.assign(this.values, map);
     }
 
-    // ---------- read ----------
     getField<T = any>(id: string): T | undefined {
-        return this.fields[id] as T | undefined
+        return this.values[id] as T | undefined;
     }
 
     getFields(): Record<string, any> {
-        return {...this.fields}
+        return { ...this.values };
     }
 
-    // ---------- state ----------
+    // ---------- STATE GETTERS ----------
+
     isProcessing(): boolean {
-        return this.processing
+        return this.processing;
     }
 
     isValid(): boolean
     isValid(fieldId: string): boolean
     isValid(arg?: string): boolean {
-        if (typeof arg === 'string') return !this.hasError(arg)
-        return Object.keys(this.errors).length === 0
+        if (typeof arg === 'string') return !this.hasError(arg);
+        return Object.keys(this.errors).length === 0;
     }
 
     hasError(fieldId: string): boolean {
-        const errs = this.errors[fieldId]
-        return Array.isArray(errs) && errs.length > 0
+        const errs = this.errors[fieldId];
+        return Array.isArray(errs) && errs.length > 0;
     }
 
     getFieldError(fieldId: string): string | undefined {
-        const errs = this.errors[fieldId]
-        return Array.isArray(errs) && errs.length ? errs[0] : undefined
+        const errs = this.errors[fieldId];
+        return Array.isArray(errs) && errs.length ? errs[0] : undefined;
     }
 
     getFormErrors(): Record<string, string[]> {
-        return {...this.errors}
+        return { ...this.errors };
     }
 
     hasFormErrors(): boolean {
-        return Object.keys(this.errors).length > 0
+        return Object.keys(this.errors).length > 0;
     }
 
-    // ---------- network ----------
+    // ---------- NETWORK METHODS ----------
+
     async validate(
         opts?: { only?: string[] },
         fetchImpl?: typeof fetch
     ): Promise<ValidateResult> {
-        this.processing = true
+        this.processing = true;
         try {
+            // "Progressive Enhancement": Run fast, local validation ONLY if definitions are available.
+            if (this.hasFetchedDefs) {
+                const clientErrors = this.validateLocally(opts?.only);
+                if (Object.keys(clientErrors).length > 0) {
+                    this.errors = clientErrors;
+                    return { valid: false, errors: this.getFormErrors(), message: 'Please fix the errors below.' };
+                }
+            }
+
+            // If local checks pass or are skipped, proceed to the server for live validation.
             const body = this.withMeta({
                 formId: this.formId,
-                fields: toPlain(this.fields),
-                ...(opts?.only?.length ? {only: opts.only} : {}),
-            })
+                fields: toPlain(this.values),
+                ...(opts?.only?.length ? { only: opts.only } : {}),
+            });
 
-            const {res, json} = await fetchJSON(
+            const { res, json } = await fetchJSON(
                 ENDPOINTS.validate(this.formId),
                 {
                     method: 'POST',
-                    headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
+                    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
                     body: JSON.stringify(body),
                 },
                 fetchImpl
-            )
+            );
 
-            // Success contract: 200 { valid: true }
             if (res.status === 200 && json?.valid === true) {
-                this.errors = {}
-                return {valid: true, message: json?.message}
+                this.errors = {};
+                return { valid: true, message: json?.message };
             }
 
-            // Validation contract: 422 { errors: { ... } }
             if (res.status === 422) {
-                this.errors = normalizeErrors(json)
-                return {valid: false, errors: this.getFormErrors(), message: json?.message}
+                this.errors = normalizeErrors(json);
+                return { valid: false, errors: this.getFormErrors(), message: json?.message };
             }
 
-            throw new SwellformsError(`Unexpected status ${res.status}`, res.status, 'UNEXPECTED')
+            throw new SwellformsError(`Unexpected status ${res.status}`, res.status, 'UNEXPECTED');
         } finally {
-            this.processing = false
+            this.processing = false;
         }
-    }
-
-    async validateField(fieldId: string, fetchImpl?: typeof fetch): Promise<ValidateResult> {
-        return this.validate({only: [fieldId]}, fetchImpl)
     }
 
     async submit<T = any>(
         overrides?: { fields?: Record<string, Json> },
         fetchImpl?: typeof fetch
     ): Promise<SubmitResult<T>> {
-        this.processing = true
+        this.processing = true;
         try {
-            const merged = {...this.fields, ...(overrides?.fields || {})}
+            // "Progressive Enhancement": Run fast, local validation ONLY if definitions are available.
+            if (this.hasFetchedDefs) {
+                const clientErrors = this.validateLocally();
+                if (Object.keys(clientErrors).length > 0) {
+                    this.errors = clientErrors;
+                    return { ok: false, status: 422, errors: this.getFormErrors(), data: { message: 'Validation failed.' } };
+                }
+            }
+
+            // If local checks pass or are skipped, proceed to submit the data to the server.
+            const merged = { ...this.values, ...(overrides?.fields || {}) };
             const body = this.withMeta({
                 formId: this.formId,
                 fields: toPlain(merged),
-            })
+            });
 
-            const {res, json} = await fetchJSON(
+            const { res, json } = await fetchJSON(
                 ENDPOINTS.submit(this.formId),
                 {
                     method: 'POST',
-                    headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
+                    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
                     body: JSON.stringify(body),
                 },
                 fetchImpl
-            )
+            );
 
             if (res.status === 422) {
-                this.errors = normalizeErrors(json)
-                return {ok: false, status: 422, errors: this.getFormErrors(), data: json}
+                this.errors = normalizeErrors(json);
+                return { ok: false, status: 422, errors: this.getFormErrors(), data: json };
             }
 
             if (res.ok) {
-                this.errors = {}
-                return {ok: true, status: res.status, data: json as T}
+                this.errors = {};
+                return { ok: true, status: res.status, data: json as T };
             }
 
-            if (res.status === 429) throw new SwellformsError('Rate limited', res.status, 'RATE_LIMITED')
-            if (res.status === 409) throw new SwellformsError('Conflict', res.status, 'CONFLICT')
-            if (res.status >= 500) throw new SwellformsError('Server error', res.status, 'SERVER')
-            throw new SwellformsError(`Unexpected status ${res.status}`, res.status, 'UNEXPECTED')
+            if (res.status === 429) throw new SwellformsError('Rate limited', res.status, 'RATE_LIMITED');
+            if (res.status === 409) throw new SwellformsError('Conflict', res.status, 'CONFLICT');
+            if (res.status >= 500) throw new SwellformsError('Server error', res.status, 'SERVER');
+            throw new SwellformsError(`Unexpected status ${res.status}`, res.status, 'UNEXPECTED');
         } finally {
-            this.processing = false
+            this.processing = false;
         }
     }
 
-    async fetchFields(fetchImpl?: typeof fetch): Promise<FieldsResponse> {
-        const {res, json} = await fetchJSON(
-            ENDPOINTS.fields(this.formId),
-            {method: 'GET', headers: {'Accept': 'application/json'}},
-            fetchImpl
-        )
-        if (!res.ok) {
-            if (res.status === 404) throw new SwellformsError('Form not found', res.status, 'NOT_FOUND')
-            if (res.status === 401 || res.status === 403) throw new SwellformsError('Unauthorized', res.status, 'UNAUTHORIZED')
-            throw new SwellformsError(`Failed to fetch fields (${res.status})`, res.status, 'UNEXPECTED')
+    // ---------- PRIVATE HELPERS ----------
+
+    /**
+     * Performs basic client-side validation (e.g., checking for required fields).
+     * This method is only ever called if field definitions have been previously fetched.
+     */
+    private validateLocally(only?: string[]): Record<string, string[]> {
+        const errors: Record<string, string[]> = {};
+        const fieldsToValidate = only
+            ? this.definitions.filter(def => only.includes(def.name))
+            : this.definitions;
+
+        for (const field of fieldsToValidate) {
+            const value = this.values[field.name];
+            if (field.required) {
+                const isEmpty = value === null || value === undefined || value === '' || (Array.isArray(value) && value.length === 0);
+                if (isEmpty) {
+                    errors[field.name] = ['This field is required.'];
+                }
+            }
         }
-        const fields = Array.isArray(json) ? json : (json?.fields ?? [])
-        return {formId: this.formId, fields}
+        return errors;
     }
 
-    // ---------- utils ----------
     private withMeta(body: any) {
-        const originUrl = typeof window !== 'undefined' ? window.location.host : ''
-        const fullUrl = typeof window !== 'undefined' ? window.location.href : ''
-        return {...body, originUrl, fullUrl}
+        const originUrl = typeof window !== 'undefined' ? window.location.host : '';
+        const fullUrl = typeof window !== 'undefined' ? window.location.href : '';
+        return { ...body, originUrl, fullUrl };
     }
 }
 
