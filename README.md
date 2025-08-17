@@ -250,11 +250,11 @@ becomes:
 
 ## One-shot helpers
 
-### `submitForm<T>(payload: { formId: string; fields?: Record<string, Json> }, fetchImpl?: typeof fetch): Promise<SubmitResult<T>>`
+`submitForm<T>(payload: { formId: string; fields?: Record<string, Json> }, fetchImpl?: typeof fetch): Promise<SubmitResult<T>>`
 
 Creates a temporary `SwellForm` under the hood and calls `submit`. Useful for simple flows.
 
-### `validateForm(payload: { formId: string; fields?: Record<string, Json>; only?: string[] }, fetchImpl?: typeof fetch): Promise<ValidateResult>`
+`validateForm(payload: { formId: string; fields?: Record<string, Json>; only?: string[] }, fetchImpl?: typeof fetch): Promise<ValidateResult>`
 
 Creates a temporary `SwellForm` and calls `validate`.
 
