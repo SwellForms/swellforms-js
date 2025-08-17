@@ -15,6 +15,12 @@ jobs:
     # The type of runner that the job will run on
     runs-on: ubuntu-latest
 
+    # This grants the GITHUB_TOKEN the permissions it needs to create a tag
+    # and push it back to the repository.
+    permissions:
+      contents: write # To push commits and tags
+      pull-requests: read # To read PR titles for conventional commits
+
     # The sequence of steps that make up the job
     steps:
       # 1. Checkout the code from your repository
