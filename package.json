@@ -1,6 +1,6 @@
 {
   "name": "@swellforms/js",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Core JavaScript SDK for SwellForms",
   "license": "MIT",
   "type": "module",
@@ -11,12 +11,12 @@
     "SwellAI Ltd <hello@swellai.ltd> (https://swellai.ltd)"
   ],
   "main": "./dist/index.cjs",
-  "module": "./dist/index.mjs",
+  "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.mjs",
+      "import": "./dist/index.js",
       "require": "./dist/index.cjs"
     }
   },
