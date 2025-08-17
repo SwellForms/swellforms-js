@@ -45,15 +45,16 @@ export interface ValidateResultErr {
 
 export type ValidateResult = ValidateResultOk | ValidateResultErr
 
+export type FormFieldType = 'text' | 'email' | 'textarea' | 'password' | 'number' | 'select' | 'checkbox' | 'radio';
+
 export interface FormField {
     id: string
-    label: string
-    name?: string
-    type: string
-    required?: boolean
+    name: string
+    label?: string
+    type: FormFieldType
+    required: boolean
     placeholder?: string
     options?: Array<{ value: string; label: string }>
-    meta?: Record<string, Json>
 }
 
 export interface FieldsResponse {
@@ -65,6 +66,7 @@ export class SwellformsError extends Error {
     status: number
     code?: string
     errors?: Record<string, string[]>
+
     constructor(message: string, status: number, code?: string, errors?: Record<string, string[]>) {
         super(message)
         this.name = 'SwellformsError'
@@ -116,10 +118,16 @@ async function fetchJSON(
     const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : undefined
     const id = ctrl ? setTimeout(() => ctrl.abort(), timeoutMs) : undefined
     try {
-        const res = await _fetch(url, { ...init, signal: ctrl?.signal })
+        const res = await _fetch(url, {...init, signal: ctrl?.signal})
         const text = await res.text()
-        const json = text ? (() => { try { return JSON.parse(text) } catch { return undefined } })() : undefined
-        return { res, json }
+        const json = text ? (() => {
+            try {
+                return JSON.parse(text)
+            } catch {
+                return undefined
+            }
+        })() : undefined
+        return {res, json}
     } catch (err: any) {
         if (err?.name === 'AbortError') throw new SwellformsError('Request timed out', 0, 'TIMEOUT')
         throw new SwellformsError(err?.message || 'Network error', 0, 'NETWORK')
@@ -136,13 +144,14 @@ export class SwellForm {
 
     constructor(formId: string, initialFields: Record<string, any> = {}) {
         this.formId = formId
-        this.fields = { ...initialFields }
+        this.fields = {...initialFields}
     }
 
     // ---------- mutation ----------
     setField(id: string, value: any) {
         this.fields[id] = value
     }
+
     setFields(map: Record<string, any>) {
         Object.assign(this.fields, map)
     }
@@ -151,31 +160,37 @@ export class SwellForm {
     getField<T = any>(id: string): T | undefined {
         return this.fields[id] as T | undefined
     }
+
     getFields(): Record<string, any> {
-        return { ...this.fields }
+        return {...this.fields}
     }
 
     // ---------- state ----------
     isProcessing(): boolean {
         return this.processing
     }
+
     isValid(): boolean
     isValid(fieldId: string): boolean
     isValid(arg?: string): boolean {
         if (typeof arg === 'string') return !this.hasError(arg)
         return Object.keys(this.errors).length === 0
     }
+
     hasError(fieldId: string): boolean {
         const errs = this.errors[fieldId]
         return Array.isArray(errs) && errs.length > 0
     }
+
     getFieldError(fieldId: string): string | undefined {
         const errs = this.errors[fieldId]
         return Array.isArray(errs) && errs.length ? errs[0] : undefined
     }
+
     getFormErrors(): Record<string, string[]> {
-        return { ...this.errors }
+        return {...this.errors}
     }
+
     hasFormErrors(): boolean {
         return Object.keys(this.errors).length > 0
     }
@@ -190,14 +205,14 @@ export class SwellForm {
             const body = this.withMeta({
                 formId: this.formId,
                 fields: toPlain(this.fields),
-                ...(opts?.only?.length ? { only: opts.only } : {}),
+                ...(opts?.only?.length ? {only: opts.only} : {}),
             })
 
-            const { res, json } = await fetchJSON(
+            const {res, json} = await fetchJSON(
                 ENDPOINTS.validate(this.formId),
                 {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                    headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
                     body: JSON.stringify(body),
                 },
                 fetchImpl
@@ -206,13 +221,13 @@ export class SwellForm {
             // Success contract: 200 { valid: true }
             if (res.status === 200 && json?.valid === true) {
                 this.errors = {}
-                return { valid: true, message: json?.message }
+                return {valid: true, message: json?.message}
             }
 
             // Validation contract: 422 { errors: { ... } }
             if (res.status === 422) {
                 this.errors = normalizeErrors(json)
-                return { valid: false, errors: this.getFormErrors(), message: json?.message }
+                return {valid: false, errors: this.getFormErrors(), message: json?.message}
             }
 
             throw new SwellformsError(`Unexpected status ${res.status}`, res.status, 'UNEXPECTED')
@@ -222,7 +237,7 @@ export class SwellForm {
     }
 
     async validateField(fieldId: string, fetchImpl?: typeof fetch): Promise<ValidateResult> {
-        return this.validate({ only: [fieldId] }, fetchImpl)
+        return this.validate({only: [fieldId]}, fetchImpl)
     }
 
     async submit<T = any>(
@@ -231,17 +246,17 @@ export class SwellForm {
     ): Promise<SubmitResult<T>> {
         this.processing = true
         try {
-            const merged = { ...this.fields, ...(overrides?.fields || {}) }
+            const merged = {...this.fields, ...(overrides?.fields || {})}
             const body = this.withMeta({
                 formId: this.formId,
                 fields: toPlain(merged),
             })
 
-            const { res, json } = await fetchJSON(
+            const {res, json} = await fetchJSON(
                 ENDPOINTS.submit(this.formId),
                 {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                    headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
                     body: JSON.stringify(body),
                 },
                 fetchImpl
@@ -249,12 +264,12 @@ export class SwellForm {
 
             if (res.status === 422) {
                 this.errors = normalizeErrors(json)
-                return { ok: false, status: 422, errors: this.getFormErrors(), data: json }
+                return {ok: false, status: 422, errors: this.getFormErrors(), data: json}
             }
 
             if (res.ok) {
                 this.errors = {}
-                return { ok: true, status: res.status, data: json as T }
+                return {ok: true, status: res.status, data: json as T}
             }
 
             if (res.status === 429) throw new SwellformsError('Rate limited', res.status, 'RATE_LIMITED')
@@ -267,9 +282,9 @@ export class SwellForm {
     }
 
     async fetchFields(fetchImpl?: typeof fetch): Promise<FieldsResponse> {
-        const { res, json } = await fetchJSON(
+        const {res, json} = await fetchJSON(
             ENDPOINTS.fields(this.formId),
-            { method: 'GET', headers: { 'Accept': 'application/json' } },
+            {method: 'GET', headers: {'Accept': 'application/json'}},
             fetchImpl
         )
         if (!res.ok) {
@@ -278,14 +293,14 @@ export class SwellForm {
             throw new SwellformsError(`Failed to fetch fields (${res.status})`, res.status, 'UNEXPECTED')
         }
         const fields = Array.isArray(json) ? json : (json?.fields ?? [])
-        return { formId: this.formId, fields }
+        return {formId: this.formId, fields}
     }
 
     // ---------- utils ----------
     private withMeta(body: any) {
         const originUrl = typeof window !== 'undefined' ? window.location.host : ''
         const fullUrl = typeof window !== 'undefined' ? window.location.href : ''
-        return { ...body, originUrl, fullUrl }
+        return {...body, originUrl, fullUrl}
     }
 }
 
@@ -303,7 +318,7 @@ export async function validateForm(
     fetchImpl?: typeof fetch
 ): Promise<ValidateResult> {
     const f = new SwellForm(payload.formId, payload.fields || {})
-    return f.validate(payload.only ? { only: payload.only } : undefined, fetchImpl)
+    return f.validate(payload.only ? {only: payload.only} : undefined, fetchImpl)
 }
 
 export default SwellForm
