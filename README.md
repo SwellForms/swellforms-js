@@ -105,6 +105,74 @@ if (form.isValid()) {
 }
 ```
 
+### Dynamic UI Generation
+For cases where you want to render a form without hardcoding the HTML, you can fetch the field definitions directly from the API and build your UI dynamically.
+
+```javascript
+import SwellForm from "@swellforms/js";
+
+const formContainer = document.getElementById("form-container");
+const form = new SwellForm("sf_aZx90qLp");
+
+async function buildDynamicForm() {
+  try {
+    // 1. Fetch the field definitions from the API
+    const fields = await form.fetchFields();
+
+    // 2. Loop through the definitions and create HTML elements
+    fields.forEach(field => {
+      const label = document.createElement("label");
+      label.textContent = field.label || field.name;
+      label.htmlFor = field.name;
+
+      let inputElement;
+
+      // Handle different field types
+      if (field.type === 'textarea') {
+        inputElement = document.createElement('textarea');
+      } else if (field.type === 'select') {
+        inputElement = document.createElement('select');
+        field.options?.forEach(option => {
+            const opt = document.createElement('option');
+            opt.value = option.value;
+            opt.textContent = option.label;
+            inputElement.appendChild(opt);
+        });
+      } else {
+        inputElement = document.createElement('input');
+        inputElement.type = field.type;
+      }
+      
+      // Assign common attributes
+      inputElement.id = field.name;
+      inputElement.name = field.name;
+      inputElement.placeholder = field.placeholder || '';
+      inputElement.required = field.required;
+
+      // Add the elements to the container
+      formContainer.appendChild(label);
+      formContainer.appendChild(inputElement);
+      formContainer.appendChild(document.createElement('br')); // for spacing
+    });
+
+    // Don't forget to add a submit button
+    const submitButton = document.createElement('button');
+    submitButton.type = 'submit';
+    submitButton.textContent = 'Submit';
+    formContainer.appendChild(submitButton);
+
+  } catch (error) {
+    console.error("Failed to build form:", error);
+    formContainer.textContent = "Sorry, the form could not be loaded.";
+  }
+}
+
+buildDynamicForm();
+
+// You would then add a submit handler to the formContainer
+// to collect the values and call form.submit()
+```
+
 ### Plain JavaScript example (no framework)
 
 ```html
